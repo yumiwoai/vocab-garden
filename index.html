@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>玉米的六级花园</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #8bb9fe;
+            --secondary: #e6f0ff;
+            --text: #2c3e50;
+            --light-text: #7a8ca0;
+            --accent: #ff9f9f;
+            --success: #4CAF50;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f7fa;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 4px 20px rgba(139, 185, 254, 0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            color: var(--text);
+            font-size: 24px;
+            font-weight: 600;
+        }
+
+        .timer-section {
+            background: var(--secondary);
+            border-radius: 16px;
+            padding: 24px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .timer {
+            font-size: 48px;
+            font-weight: 700;
+            color: var(--primary);
+            font-variant-numeric: tabular-nums;
+            letter-spacing: 1px;
+        }
+
+        .quote-card {
+            background: linear-gradient(135deg, var(--primary), #a8c9ff);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 20px 0;
+            color: white;
+        }
+
+        .quote-text {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .quote-author {
+            font-size: 14px;
+            text-align: right;
+            font-style: italic;
+            opacity: 0.9;
+        }
+
+        .quote-cn {
+            font-size: 15px;
+            margin-top: 8px;
+            opacity: 0.9;
+        }
+
+        .word-card {
+            background: white;
+            border: 2px solid var(--secondary);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .word {
+            font-size: 28px;
+            margin-bottom: 12px;
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        .meaning {
+            font-size: 16px;
+            color: var(--light-text);
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .phrase {
+            font-size: 14px;
+            font-style: italic;
+            color: var(--light-text);
+        }
+
+        .garden-section {
+            background: var(--secondary);
+            border-radius: 16px;
+            padding: 24px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .garden-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .seed-counter {
+            background: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .garden-container {
+            background: #fff;
+            border-radius: 16px;
+            height: 300px;
+            position: relative;
+            overflow: hidden;
+            margin: 16px 0;
+            border: 2px solid var(--primary);
+            background: linear-gradient(to bottom, #e8f5e9, #c8e6c9);
+        }
+
+        .flower {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            transform-origin: bottom center;
+            animation: sway 3s ease-in-out infinite alternate;
+        }
+
+        .flower::before {
+            content: '🌸';
+            font-size: 32px;
+        }
+
+        @keyframes sway {
+            from { transform: rotate(-5deg); }
+            to { transform: rotate(5deg); }
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin: 8px 0;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(139, 185, 254, 0.2);
+        }
+
+        #startBtn {
+            background: var(--primary);
+            color: white;
+        }
+
+        #breakBtn {
+            background: var(--accent);
+            color: white;
+        }
+
+        #plantBtn {
+            background: var(--success);
+            color: white;
+            width: auto;
+            padding: 12px 24px;
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            background: var(--secondary);
+            padding: 16px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--light-text);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>玉米的六级花园</h1>
+        </div>
+
+        <div class="timer-section">
+            <div class="timer" id="timer">25:00</div>
+        </div>
+
+        <div class="quote-card">
+            <div class="quote-text" id="quote-text"></div>
+            <div class="quote-author" id="quote-author"></div>
+            <div class="quote-cn" id="quote-cn"></div>
+        </div>
+
+        <div class="word-card">
+            <div class="word" id="word">Loading...</div>
+            <div class="meaning" id="meaning"></div>
+            <div class="phrase" id="phrase"></div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-value" id="totalTime">0</div>
+                <div class="stat-label">学习时间(分钟)</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="wordCount">0</div>
+                <div class="stat-label">已学单词</div>
+            </div>
+        </div>
+
+        <button id="startBtn">开始学习</button>
+        <button id="breakBtn">休息一下</button>
+
+        <div class="garden-section">
+            <div class="garden-header">
+                <h2>我的花园</h2>
+                <div class="seed-counter">
+                    🌱 <span id="seedCount">0</span> 颗种子
+                </div>
+            </div>
+            <div class="garden-container" id="garden"></div>
+            <button id="plantBtn" disabled>种花 (5颗种子)</button>
+        </div>
+    </div>
+
+    <script>
+        // Core variables
+        let timer;
+        let timeLeft = 25 * 60;
+        let isStudying = false;
+        let totalTimeStudied = 0;
+        let wordsLearned = 0;
+        let seeds = 0;
+
+        const quotes = [
+            {
+                text: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
+                author: "Winston Churchill",
+                cn: "成功不是终点，失败也不是终结：重要的是继续前进的勇气。"
+            },
+            {
+                text: "The future depends on what you do today.",
+                author: "Mahatma Gandhi",
+                cn: "未来取决于你今天的行动。"
+            },
+            {
+                text: "I LOVE YOU WHAT IS YOUR QQ",
+                author: "IT IS ME",
+                cn: "劳资爱你。"
+            },
+            {
+                text: "快点 Bag 单词",
+                author: "IT IS ME",
+                cn: "看我干嘛背啊。"
+            },
+            {
+                text: "The expert in anything was once a beginner.",
+                author: "Helen Hayes",
+                cn: "任何领域的专家都曾是初学者。"
+            }
+        ];
+
+        const vocabulary = [
+            {
+                word: "abandon",
+                meaning: "v. 放弃，抛弃；n. 放纵，随心所欲",
+                phrase: "abandon oneself to despair 陷入绝望"
+            },
+            {
+                word: "abnormal",
+                meaning: "adj. 反常的，变态的",
+                phrase: "abnormal behavior 反常行为"
+            },
+            {
+                word: "abolish",
+                meaning: "vt. 废止，废除(法律，制度，习俗等)",
+                phrase: "abolish slavery 废除奴隶制"
+            }
+        ];
+
+        function updateTimer() {
+            const minutes = Math.floor(timeLeft / 60);
+            const seconds = timeLeft % 60;
+            document.getElementById('timer').textContent =
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function showRandomWord() {
+            const randomIndex = Math.floor(Math.random() * vocabulary.length);
+            const wordObj = vocabulary[randomIndex];
+            document.getElementById('word').textContent = wordObj.word;
+            document.getElementById('meaning').textContent = wordObj.meaning;
+            document.getElementById('phrase').textContent = wordObj.phrase;
+        }
+
+        function showRandomQuote() {
+            const randomIndex = Math.floor(Math.random() * quotes.length);
+            const quote = quotes[randomIndex];
+            document.getElementById('quote-text').textContent = quote.text;
+            document.getElementById('quote-author').textContent = `- ${quote.author}`;
+            document.getElementById('quote-cn').textContent = quote.cn;
+        }
+
+        function updateSeeds(amount) {
+            seeds += amount;
+            document.getElementById('seedCount').textContent = seeds;
+            document.getElementById('plantBtn').disabled = seeds < 5;
+        }
+
+        function addFlower() {
+            if (seeds >= 5) {
+                const flower = document.createElement('div');
+                flower.className = 'flower';
+                flower.style.left = Math.random() * 80 + 10 + '%';
+                flower.style.top = Math.random() * 80 + 10 + '%';
+                document.getElementById('garden').appendChild(flower);
+                updateSeeds(-5);
+            }
+        }
+
+        function finishStudySession() {
+            clearInterval(timer);
+            isStudying = false;
+            timeLeft = 25 * 60;
+            updateTimer();
+            document.getElementById('startBtn').disabled = false;
+
+            totalTimeStudied += 25;
+            wordsLearned += 50;
+
+            document.getElementById('totalTime').textContent = totalTimeStudied;
+            document.getElementById('wordCount').textContent = wordsLearned;
+
+            updateSeeds(3);
+
+            if (document.fullscreenElement) {
+                document.exitFullscreen();
+            }
+        }
+
+        function startStudying() {
+            if (isStudying) return;
+
+            isStudying = true;
+            document.getElementById('startBtn').disabled = true;
+
+            timer = setInterval(() => {
+                if (timeLeft > 0) {
+                    timeLeft--;
+                    updateTimer();
+                } else {
+                    finishStudySession();
+                }
+            }, 1000);
+
+            setInterval(() => {
+                showRandomWord();
+                showRandomQuote();
+            }, 30000);
+
+            showRandomWord();
+            showRandomQuote();
+
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            }
+        }
+
+        // Event listeners
+        document.getElementById('startBtn').addEventListener('click', startStudying);
+        document.getElementById('breakBtn').addEventListener('click', finishStudySession);
+        document.getElementById('plantBtn').addEventListener('click', addFlower);
+
+        document.addEventListener('fullscreenchange', () => {
+            if (isStudying && !document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            }
+        });
+
+        // Initialize
+        updateTimer();
+        showRandomWord();
+        showRandomQuote();
+        updateSeeds(0);
+    </script>
+</body>
+</html>
