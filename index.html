@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactive Neon Rain</title>
+    <title>Four Seasons Interactive Final</title>
     <style>
         body, html {
             margin: 0;
@@ -11,291 +11,684 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #050505; /* 深夜背景 */
+            background-color: #000;
+            transition: background 1s ease;
+            user-select: none; /* 防止长按选中文本 */
+            -webkit-user-select: none;
         }
         canvas {
             display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            display: flex;
+            gap: 10px;
+        }
+        .season-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            padding: 8px 16px;
+            cursor: pointer;
+            border-radius: 20px;
+            font-family: "Microsoft YaHei", sans-serif;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s;
+        }
+        .season-btn:hover, .season-btn.active {
+            background: rgba(255, 255, 255, 0.9);
+            color: #333;
+            transform: scale(1.1);
         }
         #instructions {
             position: absolute;
             top: 20px;
             left: 50%;
             transform: translateX(-50%);
-            color: rgba(255, 255, 255, 0.6);
+            color: rgba(255, 255, 255, 0.7);
             font-family: sans-serif;
             font-size: 14px;
-            pointer-events: none; /* 让鼠标事件穿透文字 */
+            pointer-events: none; 
             text-align: center;
-            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+            text-shadow: 0 0 5px rgba(0,0,0,0.5);
             z-index: 10;
+        }
+        /* 提示用户可以长按 */
+        #hint {
+            margin-top: 5px;
+            font-size: 12px;
+            opacity: 0.8;
+            color: #ffd700;
         }
     </style>
 </head>
 <body>
 
     <div id="instructions">
-        左右移动鼠标改变风向 • 鼠标周围有避雨力场
+        移动鼠标控制风向 • <b>长按鼠标/屏幕触发彩蛋</b>
+        <div id="hint">✨ 试着按住不要松手 ✨</div>
     </div>
-    <canvas id="rainCanvas"></canvas>
+
+    <div id="ui-layer">
+        <button class="season-btn active" onclick="setSeason('spring')">🌸 春</button>
+        <button class="season-btn" onclick="setSeason('summer')">🌧️ 夏</button>
+        <button class="season-btn" onclick="setSeason('autumn')">🍁 秋</button>
+        <button class="season-btn" onclick="setSeason('winter')">❄️ 冬</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
 
     <script>
-        const canvas = document.getElementById('rainCanvas');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
         let width, height;
-        let drops = [];
-        let splashes = []; // 存储飞溅粒子
-        // 雨滴数量，可以根据性能调整。2000属于比较大的暴雨
-        const dropCount = 2000; 
-        
-        // 全局时间变量，用于颜色循环
+        let particles = [];
+        let debris = []; 
+        let stars = []; 
+        let flowers = []; 
         let tick = 0;
         
-        // 鼠标交互状态
-        const mouse = {
-            x: -1000, // 初始位置在屏幕外
-            y: -1000,
-            active: false
+        let currentSeason = 'spring';
+        // 彩蛋状态：是否显示围巾
+        let isScarfMode = false;
+        
+        const seasonConfig = {
+            spring: {
+                bgColor: ['#87CEEB', '#E0F7FA'], 
+                particleCount: 800,
+                groundColor: ['#4CAF50', '#8BC34A'],
+                treeColor: ['#ffb7c5', '#ff9eb5'], 
+                msg: "别怕，花再多有我呢"
+            },
+            summer: {
+                bgColor: ['#2c3e50', '#34495e'], 
+                particleCount: 1500,
+                groundColor: ['#1b5e20', '#2e7d32'], 
+                treeColor: ['#1b5e20', '#388E3C'], 
+                msg: "别怕，雨再大有我呢"
+            },
+            autumn: {
+                bgColor: ['#5D4037', '#8D6E63'], 
+                particleCount: 500, // 枫叶不需要太多，注重形态
+                groundColor: ['#6D4C41', '#8D6E63'], 
+                treeColor: ['#bf360c', '#ff5722'], // 更红的枫树
+                msg: "别怕，风再大有我呢"
+            },
+            winter: {
+                bgColor: ['#0c1445', '#1c2b5a'], 
+                particleCount: 1200,
+                groundColor: ['#e0e5ff', '#cdd7f0'], 
+                treeColor: ['#2e7d32', '#1b5e20'], 
+                msg: "别怕，雪再大有我呢"
+            }
         };
 
-        // 风力系数
+        const mouse = { x: -1000, y: -1000, active: false };
         let wind = 0;
 
-        // 初始化画布尺寸
         function resize() {
             width = canvas.width = window.innerWidth;
             height = canvas.height = window.innerHeight;
+            initStaticElements();
         }
 
-        // 飞溅粒子类
-        class Splash {
-            constructor(x, y, hue) {
-                this.x = x;
-                this.y = y;
-                // 随机向左右飞溅，速度随机
-                this.vx = (Math.random() - 0.5) * 4; 
-                // 向上弹起，速度随机
-                this.vy = -(Math.random() * 3 + 2); 
-                this.gravity = 0.2;
-                this.hue = hue; // 继承雨滴的颜色
-                this.life = 1.0; // 生命周期/透明度
-                this.decay = Math.random() * 0.05 + 0.02; // 消失速度
+        function initStaticElements() {
+            stars = [];
+            for(let i=0; i<200; i++) {
+                stars.push({
+                    x: Math.random() * width,
+                    y: Math.random() * height * 0.6,
+                    size: Math.random() * 1.5 + 0.5,
+                    opacity: Math.random()
+                });
             }
-
-            update() {
-                this.x += this.vx;
-                this.vy += this.gravity;
-                this.y += this.vy;
-                this.life -= this.decay;
-            }
-
-            draw() {
-                // 使用 HSLA 颜色
-                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, 1, 0, Math.PI * 2);
-                ctx.fill();
+            flowers = [];
+            const cx = width / 2;
+            for(let i=0; i<50; i++) {
+                const angle = Math.random() * Math.PI; 
+                const dist = Math.random() * width * 0.4;
+                flowers.push({
+                    x: cx + Math.cos(angle) * dist,
+                    y: height - Math.random() * 100 + Math.sin(angle) * 20, 
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    size: Math.random() * 3 + 2
+                });
             }
         }
 
-        // 雨滴类
-        class Drop {
+        window.setSeason = function(season) {
+            currentSeason = season;
+            document.querySelectorAll('.season-btn').forEach(btn => {
+                if(btn.innerText.includes(season === 'spring' ? '春' : season === 'summer' ? '夏' : season === 'autumn' ? '秋' : '冬')) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            particles = [];
+            debris = [];
+            const count = seasonConfig[season].particleCount;
+            for(let i=0; i<count; i++) {
+                particles.push(new Particle());
+            }
+        };
+
+        class Particle {
             constructor() {
                 this.reset(true);
             }
 
-            // 重置雨滴属性
             reset(initial = false) {
                 this.x = Math.random() * width;
-                // 如果是初始化，随机分布在全屏；否则从顶部开始
                 this.y = initial ? Math.random() * height : -50;
-                
-                // z轴深度 (0 - 1)，1离屏幕最近，0最远
                 this.z = Math.random(); 
                 
-                // 调整参数让雨看起来更细腻
-                this.len = 15 + this.z * 15; 
-                this.opacity = 0.1 + this.z * 0.4; 
-                this.speed = 8 + this.z * 12; 
-                this.width = 0.5 + this.z * 0.8; 
-                
-                this.velX = (Math.random() - 0.5) * 0.5;
+                this.velX = 0;
+                this.velY = 0;
+                this.rotation = Math.random() * Math.PI * 2;
+                this.spinSpeed = (Math.random() - 0.5) * 0.1;
 
-                // 随机色彩偏移：每个雨滴都有自己的颜色性格
-                // 这样即使全局颜色在变，每个雨滴也不是完全一样的颜色
-                this.colorOffset = Math.random() * 60; 
+                if (currentSeason === 'spring') {
+                    this.size = 3 + this.z * 5;
+                    this.speed = 1 + this.z * 1.5;
+                    this.swingBase = Math.random() * Math.PI * 2;
+                    const springColors = ['#ffb7c5', '#ffcdd2', '#e1bee7', '#b39ddb', '#bbdefb', '#fff9c4'];
+                    this.color = springColors[Math.floor(Math.random() * springColors.length)];
+                    this.opacity = 0.6 + this.z * 0.4;
+                } 
+                else if (currentSeason === 'summer') {
+                    this.len = 15 + this.z * 20;
+                    this.speed = 15 + this.z * 20;
+                    this.color = `rgba(174, 194, 224, ${0.3 + this.z * 0.4})`;
+                }
+                else if (currentSeason === 'autumn') {
+                    // 秋天修改：更大、更慢、旋转更明显
+                    this.size = 6 + this.z * 8; // 更大的枫叶
+                    this.speed = 0.5 + this.z * 1.2; // 缓慢飘落
+                    this.swingBase = Math.random() * Math.PI * 2;
+                    this.spinSpeed = (Math.random() - 0.5) * 0.05; // 缓慢旋转
+                    const colors = ['#bf360c', '#d84315', '#e64a19', '#f57c00', '#ffb74d', '#8d6e63'];
+                    this.color = colors[Math.floor(Math.random() * colors.length)];
+                }
+                else { 
+                    this.size = 2 + this.z * 4;
+                    this.speed = 1.5 + this.z * 2;
+                    this.swingBase = Math.random() * Math.PI * 2;
+                    this.color = `rgba(255, 255, 255, ${0.5 + this.z * 0.5})`;
+                }
             }
 
             update() {
-                // 1. 应用风力
-                const windTarget = (mouse.x - width / 2) * 0.02; 
-                wind += (windTarget - wind) * 0.001; 
+                const windTarget = (mouse.x - width / 2) * 0.02;
+                wind += (windTarget - wind) * 0.01;
                 
-                this.x += this.velX + wind * this.z;
-                this.y += this.speed;
+                if (currentSeason === 'summer') {
+                    this.x += wind * this.z + (Math.random()-0.5);
+                    this.y += this.speed;
+                } else if (currentSeason === 'autumn') {
+                    // 秋叶飘荡感更强
+                    const swing = Math.sin(tick * 0.015 + this.swingBase) * (this.z * 3 + 1);
+                    this.x += wind * this.z + swing;
+                    this.y += this.speed;
+                    this.rotation += this.spinSpeed;
+                } else {
+                    const swing = Math.sin(tick * 0.02 + this.swingBase) * (this.z * 2);
+                    this.x += wind * this.z + swing;
+                    this.y += this.speed;
+                    this.rotation += this.spinSpeed;
+                }
 
-                // 2. 鼠标排斥力场
-                if (mouse.active) {
+                // 交互力场 (只在非彩蛋模式下生效，彩蛋模式下围巾不挡雨)
+                if (mouse.active && !isScarfMode) {
                     const dx = this.x - mouse.x;
                     const dy = this.y - mouse.y;
                     const dist = Math.sqrt(dx * dx + dy * dy);
-                    const forceRadius = 100;
+                    const forceRadius = 130;
 
                     if (dist < forceRadius) {
                         const force = (forceRadius - dist) / forceRadius;
                         const angle = Math.atan2(dy, dx);
-                        
-                        const pushX = Math.cos(angle) * force * 15;
-                        const pushY = Math.sin(angle) * force * 15;
-                        
-                        this.x += pushX;
-                        this.y += pushY;
+                        const pushStrength = currentSeason === 'summer' ? 20 : 10; 
+                        this.x += Math.cos(angle) * force * pushStrength;
+                        this.y += Math.sin(angle) * force * pushStrength;
                     }
                 }
 
-                // 3. 边界检查
-                // 落地逻辑：生成飞溅
-                if (this.y > height) {
-                    // 只有靠近屏幕的雨滴(z较大)才产生明显飞溅
-                    if (this.z > 0.5 && Math.random() > 0.5) {
-                        const splashCount = Math.floor(Math.random() * 2) + 1;
-                        // 计算当前雨滴的颜色值
-                        const currentHue = (tick + this.colorOffset) % 360;
-                        for(let i=0; i < splashCount; i++) {
-                            splashes.push(new Splash(this.x, height, currentHue));
-                        }
+                if (this.y > height || this.x > width + 100 || this.x < -100) {
+                    if (this.y > height && currentSeason === 'summer' && this.z > 0.5 && Math.random() > 0.7) {
+                        debris.push(new Splash(this.x, height));
                     }
-                    this.reset();
-                } 
-                else if (this.x > width + 100 || this.x < -100) {
                     this.reset();
                     if (this.x > width) this.x = -50;
                     else if (this.x < 0) this.x = width + 50;
-                    else this.y = -50;
                 }
             }
 
             draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                
+                if (currentSeason === 'spring') {
+                    ctx.rotate(this.rotation);
+                    ctx.beginPath();
+                    ctx.ellipse(0, 0, this.size, this.size * 0.6, 0, 0, Math.PI*2);
+                    ctx.fillStyle = this.color;
+                    ctx.globalAlpha = this.opacity;
+                    ctx.fill();
+                } 
+                else if (currentSeason === 'summer') {
+                    ctx.rotate(wind * 0.05);
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    ctx.lineTo(0, this.len);
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 1.5 + this.z;
+                    ctx.stroke();
+                }
+                else if (currentSeason === 'autumn') {
+                    // === 绘制精细的五角枫叶 ===
+                    ctx.rotate(this.rotation);
+                    ctx.beginPath();
+                    const s = this.size;
+                    // 模拟枫叶的五个尖角
+                    ctx.moveTo(0, -s); // 顶角
+                    ctx.lineTo(s*0.25, -s*0.25); // 凹陷
+                    ctx.lineTo(s*0.9, -s*0.4); // 右上角
+                    ctx.lineTo(s*0.4, 0); // 凹陷
+                    ctx.lineTo(s*0.8, s*0.6); // 右下角
+                    ctx.lineTo(0, s*0.3); // 底部根茎处
+                    ctx.lineTo(-s*0.8, s*0.6); // 左下角
+                    ctx.lineTo(-s*0.4, 0); // 凹陷
+                    ctx.lineTo(-s*0.9, -s*0.4); // 左上角
+                    ctx.lineTo(-s*0.25, -s*0.25); // 凹陷
+                    ctx.closePath();
+                    
+                    ctx.fillStyle = this.color;
+                    ctx.fill();
+                    // 简单的叶脉
+                    ctx.strokeStyle = "rgba(0,0,0,0.15)";
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath();
+                    ctx.moveTo(0, s*0.3); ctx.lineTo(0, -s*0.8);
+                    ctx.moveTo(0, s*0.3); ctx.lineTo(s*0.7, -s*0.3);
+                    ctx.moveTo(0, s*0.3); ctx.lineTo(-s*0.7, -s*0.3);
+                    ctx.stroke();
+                }
+                else { 
+                    if (this.z > 0.6) {
+                        ctx.rotate(this.rotation);
+                        ctx.beginPath();
+                        ctx.strokeStyle = this.color;
+                        ctx.lineWidth = 2;
+                        ctx.lineCap = 'round';
+                        for(let i=0; i<3; i++) {
+                            ctx.moveTo(0, -this.size);
+                            ctx.lineTo(0, this.size);
+                            ctx.rotate(Math.PI/3);
+                        }
+                        ctx.stroke();
+                        if (this.z > 0.8) {
+                            ctx.shadowColor = "white";
+                            ctx.shadowBlur = 5;
+                            ctx.stroke();
+                            ctx.shadowBlur = 0;
+                        }
+                    } else {
+                        ctx.beginPath();
+                        ctx.arc(0, 0, this.size * 0.6, 0, Math.PI*2);
+                        ctx.fillStyle = this.color;
+                        ctx.fill();
+                    }
+                }
+                ctx.restore();
+            }
+        }
+
+        class Splash {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 4;
+                this.vy = -(Math.random() * 3 + 2);
+                this.life = 1.0;
+            }
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.vy += 0.2; 
+                this.life -= 0.05;
+            }
+            draw() {
+                ctx.fillStyle = `rgba(174, 194, 224, ${this.life})`;
                 ctx.beginPath();
-                const tailX = this.x - (this.velX + wind * this.z) * 2;
-                const tailY = this.y - this.speed * 1.5;
-
-                ctx.moveTo(this.x, this.y);
-                ctx.lineTo(tailX, tailY);
-                
-                // 动态颜色计算：
-                // 基础颜色(tick) + 个人偏移(colorOffset) + 屏幕位置影响(this.x * 0.1)
-                // 这创造了一个流动的彩虹效果
-                const hue = (tick + this.colorOffset + this.x * 0.1) % 360;
-                
-                // 使用 HSLA: Hue(色相), Saturation(饱和度), Lightness(亮度), Alpha(透明度)
-                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${this.opacity})`;
-                ctx.lineWidth = this.width;
-                ctx.lineCap = 'round';
-                ctx.stroke();
+                ctx.arc(this.x, this.y, 1.5, 0, Math.PI*2);
+                ctx.fill();
             }
         }
 
-        function init() {
-            resize();
-            for (let i = 0; i < dropCount; i++) {
-                drops.push(new Drop());
+        function drawSkyElements(cx, cy) {
+            ctx.save();
+            if (currentSeason === 'spring') {
+                const sunX = width * 0.8;
+                const sunY = height * 0.2;
+                const sunRadius = 60;
+                ctx.beginPath();
+                ctx.arc(sunX, sunY, sunRadius, 0, Math.PI * 2);
+                const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunRadius * 1.5);
+                sunGrad.addColorStop(0, '#FFF176');
+                sunGrad.addColorStop(0.6, '#FFD54F');
+                sunGrad.addColorStop(1, 'rgba(255, 213, 79, 0)');
+                ctx.fillStyle = sunGrad;
+                ctx.fill();
+            } else if (currentSeason === 'summer') {
+                ctx.fillStyle = '#2c3e50';
+                for(let i=0; i<5; i++) {
+                    ctx.beginPath();
+                    ctx.arc(width * 0.3 + i * 150, height * 0.1 + Math.sin(tick*0.01 + i)*20, 100, 0, Math.PI*2);
+                    ctx.fill();
+                     ctx.beginPath();
+                    ctx.arc(width * 0.4 + i * 150, height * 0.15 + Math.cos(tick*0.01 + i)*20, 80, 0, Math.PI*2);
+                    ctx.fill();
+                }
+            } else if (currentSeason === 'winter') {
+                ctx.fillStyle = 'white';
+                stars.forEach(star => {
+                    ctx.globalAlpha = star.opacity * (0.5 + Math.sin(tick * 0.05 + star.x) * 0.5);
+                    ctx.beginPath();
+                    ctx.arc(star.x, star.y, star.size, 0, Math.PI*2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1;
+
+                const moonX = width * 0.85;
+                const moonY = height * 0.2;
+                const moonRadius = 50;
+                ctx.beginPath();
+                ctx.arc(moonX, moonY, moonRadius, 0, Math.PI*2);
+                ctx.fillStyle = '#fffde7';
+                ctx.shadowColor = '#fffde7';
+                ctx.shadowBlur = 30;
+                ctx.fill();
+                ctx.shadowBlur = 0;
             }
-            animate();
+            ctx.restore();
         }
 
-        function animate() {
-            // 时间流逝，让颜色动起来
-            tick += 0.5;
+        function drawScene() {
+            const cx = width / 2;
+            const bottomY = height;
+            const config = seasonConfig[currentSeason];
 
-            // 拖影背景
-            ctx.fillStyle = 'rgba(5, 5, 5, 0.4)';
-            ctx.fillRect(0, 0, width, height);
+            drawSkyElements(cx, bottomY);
 
-            for (let drop of drops) {
-                drop.update();
-                drop.draw();
-            }
+            ctx.save();
+            const gGrad = ctx.createLinearGradient(0, height - 150, 0, height);
+            gGrad.addColorStop(0, config.groundColor[0]);
+            gGrad.addColorStop(1, config.groundColor[1]);
+            ctx.fillStyle = gGrad;
+            
+            ctx.beginPath();
+            ctx.ellipse(cx, height + 100, width * 0.8, 200, 0, 0, Math.PI*2);
+            ctx.fill();
 
-            for (let i = splashes.length - 1; i >= 0; i--) {
-                let s = splashes[i];
-                s.update();
-                s.draw();
-                if (s.life <= 0) {
-                    splashes.splice(i, 1);
+            if (currentSeason === 'spring') {
+                flowers.forEach(flower => {
+                    ctx.beginPath();
+                    ctx.arc(flower.x, flower.y, flower.size, 0, Math.PI*2);
+                    ctx.fillStyle = flower.color;
+                    ctx.fill();
+                });
+            } else if (currentSeason === 'autumn') {
+                // 地面装饰改为几个静态的大枫叶
+                ctx.fillStyle = '#bf360c';
+                for(let i=0; i<8; i++) {
+                   ctx.save();
+                   // 随机分布在树下
+                   ctx.translate(cx - 100 + i*30 + Math.sin(i*123)*40, height - 20 + Math.cos(i*321)*10);
+                   ctx.rotate(i);
+                   const s = 4;
+                   ctx.beginPath();
+                   ctx.moveTo(0, -s); 
+                   ctx.lineTo(s*0.25, -s*0.25); ctx.lineTo(s*0.9, -s*0.4); ctx.lineTo(s*0.4, 0); 
+                   ctx.lineTo(s*0.8, s*0.6); ctx.lineTo(0, s*0.3); ctx.lineTo(-s*0.8, s*0.6); 
+                   ctx.lineTo(-s*0.4, 0); ctx.lineTo(-s*0.9, -s*0.4); ctx.lineTo(-s*0.25, -s*0.25); 
+                   ctx.fill();
+                   ctx.restore();
                 }
             }
+            ctx.restore();
+
+            const treeX = cx - 50;
+            const treeBaseY = bottomY - 25;
             
-            if(splashes.length > 1000) {
-                splashes.splice(0, splashes.length - 1000);
-            }
+            ctx.fillStyle = "#4e342e";
+            ctx.fillRect(treeX - 15, treeBaseY - 60, 30, 60);
 
-            // 绘制雨伞和暖心文字
-            if (mouse.active) {
-                ctx.save();
-                ctx.translate(mouse.x, mouse.y);
-                
-                // 1. 绘制伞盖
+            const drawLayer = (y, w, h) => {
                 ctx.beginPath();
-                // 伞的半圆
-                ctx.arc(0, -10, 45, Math.PI, 0); 
-                // 伞的底部连接线 (贝塞尔曲线让它看起来有弧度)
-                ctx.bezierCurveTo(20, -25, -20, -25, -45, -10);
+                ctx.moveTo(treeX - w, y);
+                ctx.lineTo(treeX + w, y);
+                ctx.lineTo(treeX, y - h);
+                ctx.closePath();
                 
-                // 伞的样式 - 暖色调光晕，给人安全感
-                ctx.shadowColor = "rgba(255, 220, 150, 0.6)";
-                ctx.shadowBlur = 25;
-                ctx.fillStyle = "rgba(30, 30, 40, 0.8)"; // 伞身深色半透明
+                const lGrad = ctx.createLinearGradient(treeX, y-h, treeX, y);
+                lGrad.addColorStop(0, config.treeColor[0]);
+                lGrad.addColorStop(1, config.treeColor[1]);
+                ctx.fillStyle = lGrad;
                 ctx.fill();
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
-                ctx.lineWidth = 2;
-                ctx.stroke();
+                
+                if (currentSeason === 'winter') {
+                     ctx.beginPath();
+                     ctx.moveTo(treeX, y - h);
+                     ctx.lineTo(treeX + w/2, y - h * 0.6);
+                     ctx.lineTo(treeX - w/2, y - h * 0.6);
+                     ctx.fillStyle = "rgba(255,255,255,0.9)";
+                     ctx.fill();
+                }
+            };
 
-                // 2. 绘制伞柄
+            drawLayer(treeBaseY - 50, 80, 100);
+            drawLayer(treeBaseY - 100, 60, 80);
+            drawLayer(treeBaseY - 150, 40, 60);
+
+            if (currentSeason === 'winter') {
+                const smX = cx + 120;
+                const smY = bottomY - 35;
+                ctx.fillStyle = "#fff";
+                ctx.beginPath(); ctx.arc(smX, smY - 30, 30, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(smX, smY - 70, 20, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "#333";
+                ctx.beginPath(); ctx.arc(smX - 7, smY - 75, 2, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(smX + 7, smY - 75, 2, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(smX, smY - 30, 2, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(smX, smY - 45, 2, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = "orange";
+                ctx.beginPath(); ctx.moveTo(smX, smY - 72); ctx.lineTo(smX+10, smY-70); ctx.lineTo(smX, smY-68); ctx.fill();
+            }
+            
+            if (currentSeason === 'summer') {
+                for(let i=0; i<5; i++) {
+                    const fx = cx + Math.sin(tick * 0.05 + i) * 150;
+                    const fy = bottomY - 100 + Math.cos(tick * 0.03 + i) * 50;
+                    const alpha = 0.5 + Math.sin(tick * 0.1 + i) * 0.5;
+                    ctx.fillStyle = `rgba(200, 255, 100, ${alpha})`;
+                    ctx.shadowColor = "rgb(200, 255, 100)";
+                    ctx.shadowBlur = 10;
+                    ctx.beginPath(); ctx.arc(fx, fy, 2, 0, Math.PI*2); ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+
+        function drawInteraction() {
+            if (!mouse.active) return;
+
+            ctx.save();
+            ctx.translate(mouse.x, mouse.y);
+            
+            if (isScarfMode) {
+                // === 彩蛋模式：红围巾 ===
+                // 绘制围巾主体 (随风飘动)
+                const t = tick * 0.1;
                 ctx.beginPath();
-                ctx.shadowBlur = 0; // 伞柄不需要太多光晕
-                ctx.moveTo(0, -20); // 从伞盖内部开始
-                ctx.lineTo(0, 35);  // 竖线
-                ctx.arc(6, 35, 6, Math.PI, 0); // 弯钩
-                ctx.strokeStyle = "rgba(220, 220, 220, 0.8)";
-                ctx.lineWidth = 3;
-                ctx.stroke();
+                // 围巾绕圈部分
+                ctx.ellipse(0, 0, 25, 15, 0, 0, Math.PI*2);
+                ctx.fillStyle = "#d32f2f";
+                ctx.shadowColor = "rgba(255, 0, 0, 0.5)";
+                ctx.shadowBlur = 15;
+                ctx.fill();
+                
+                // 飘动的尾巴
+                ctx.beginPath();
+                ctx.moveTo(10, 5);
+                // 贝塞尔曲线模拟飘动
+                ctx.bezierCurveTo(30, 20 + Math.sin(t)*10, 50, -10 + Math.cos(t)*10, 80 + Math.sin(t)*5, 10);
+                ctx.lineTo(80 + Math.sin(t)*5, 25);
+                ctx.bezierCurveTo(50, 5 + Math.cos(t)*10, 30, 35 + Math.sin(t)*10, 0, 15);
+                ctx.fillStyle = "#e53935";
+                ctx.fill();
+                
+                // 第二条尾巴
+                ctx.beginPath();
+                ctx.moveTo(5, 5);
+                ctx.bezierCurveTo(25, 30 + Math.cos(t)*8, 45, 10 + Math.sin(t)*8, 70 + Math.cos(t)*5, 30);
+                ctx.lineTo(70 + Math.cos(t)*5, 45);
+                ctx.bezierCurveTo(45, 25 + Math.sin(t)*8, 25, 45 + Math.cos(t)*8, -5, 15);
+                ctx.fillStyle = "#c62828";
+                ctx.fill();
 
-                // 3. 绘制文字
-                ctx.shadowColor = "rgba(0, 0, 0, 0.8)"; // 文字阴影，保证清晰
+                // 专属文案
+                ctx.shadowColor = "rgba(0,0,0,0.8)"; 
                 ctx.shadowBlur = 4;
                 ctx.font = "bold 18px 'Microsoft YaHei', sans-serif";
                 ctx.fillStyle = "#ffffff";
                 ctx.textAlign = "center";
-                // 文字在伞上方显示，带一点暖色微光
-                ctx.fillText("别怕，雨再大有我呢", 0, -65);
+                ctx.fillText("我想陪你四季流转", 0, -50);
+
+            } else {
+                // === 普通模式：伞 ===
+                // 伞盖
+                ctx.beginPath();
+                ctx.arc(0, -10, 45, Math.PI, 0); 
+                ctx.bezierCurveTo(20, -25, -20, -25, -45, -10);
                 
-                ctx.restore();
+                let umbrellaColor = "rgba(30, 30, 40, 0.8)";
+                let glowColor = "rgba(255, 255, 255, 0.5)";
+                if (currentSeason === 'spring') glowColor = "rgba(255, 200, 220, 0.6)";
+                if (currentSeason === 'autumn') glowColor = "rgba(255, 200, 100, 0.6)";
+                if (currentSeason === 'winter') glowColor = "rgba(200, 220, 255, 0.6)";
+
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 25;
+                ctx.fillStyle = umbrellaColor;
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.8)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 伞柄
+                ctx.beginPath();
+                ctx.shadowBlur = 0; 
+                ctx.moveTo(0, -20); ctx.lineTo(0, 35); ctx.arc(6, 35, 6, Math.PI, 0); 
+                ctx.strokeStyle = "rgba(200, 200, 200, 0.8)";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // 普通文字
+                ctx.shadowColor = "rgba(0,0,0,0.8)"; 
+                ctx.shadowBlur = 4;
+                ctx.font = "bold 16px 'Microsoft YaHei', sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.textAlign = "center";
+                ctx.fillText(seasonConfig[currentSeason].msg, 0, -65);
             }
+            
+            ctx.restore();
+        }
+
+        function animate() {
+            tick++;
+            
+            const bgConfig = seasonConfig[currentSeason].bgColor;
+            const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+            bgGrad.addColorStop(0, bgConfig[0]);
+            bgGrad.addColorStop(1, bgConfig[1]);
+            ctx.fillStyle = bgGrad;
+            ctx.fillRect(0, 0, width, height);
+
+            drawScene();
+
+            for (let p of particles) {
+                p.update();
+                p.draw();
+            }
+
+            for (let i = debris.length - 1; i >= 0; i--) {
+                debris[i].update();
+                debris[i].draw();
+                if (debris[i].life <= 0) debris.splice(i, 1);
+            }
+            if(debris.length > 200) debris.splice(0, 50);
+
+            drawInteraction();
 
             requestAnimationFrame(animate);
         }
 
         window.addEventListener('resize', resize);
-
-        window.addEventListener('mousemove', (e) => {
+        
+        // 鼠标移动
+        window.addEventListener('mousemove', e => {
             mouse.x = e.clientX;
             mouse.y = e.clientY;
             mouse.active = true;
         });
 
-        window.addEventListener('touchmove', (e) => {
-            e.preventDefault(); 
+        // 触摸移动
+        window.addEventListener('touchmove', e => {
+            e.preventDefault();
             mouse.x = e.touches[0].clientX;
             mouse.y = e.touches[0].clientY;
             mouse.active = true;
-        }, { passive: false });
+        }, {passive: false});
 
-        window.addEventListener('touchend', () => {
-            mouse.active = false; 
-        });
-        
-        init();
+        // 鼠标/手指 离开
+        const endAction = () => {
+            mouse.active = false;
+            isScarfMode = false; // 抬起时取消围巾模式
+        };
+        window.addEventListener('touchend', endAction);
+        window.addEventListener('mouseup', endAction);
+        window.addEventListener('mouseleave', endAction);
+
+        // 鼠标按下/手指按下 -> 激活彩蛋
+        const startAction = (e) => {
+             // 如果点击的是按钮，不触发彩蛋逻辑
+             if (e.target.classList.contains('season-btn')) return;
+             isScarfMode = true;
+             
+             // 更新坐标防止没移动时坐标不准
+             if(e.touches) {
+                 mouse.x = e.touches[0].clientX;
+                 mouse.y = e.touches[0].clientY;
+             } else {
+                 mouse.x = e.clientX;
+                 mouse.y = e.clientY;
+             }
+             mouse.active = true;
+        };
+        window.addEventListener('mousedown', startAction);
+        window.addEventListener('touchstart', startAction, {passive: false});
+
+        // 初始化
+        resize();
+        setSeason('spring'); 
+        animate();
 
     </script>
 </body>
