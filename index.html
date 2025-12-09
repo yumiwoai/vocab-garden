@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>璀璨星雨</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Interactive Neon Rain</title>
     <style>
         body, html {
             margin: 0;
@@ -12,275 +11,291 @@
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #020205; /* 更深邃的背景 */
+            background-color: #050505; /* 深夜背景 */
         }
         canvas {
             display: block;
         }
-        .overlay {
+        #instructions {
             position: absolute;
             top: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.8);
-            font-family: 'Segoe UI', sans-serif;
-            pointer-events: none;
-            user-select: none;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.6);
+            font-family: sans-serif;
+            font-size: 14px;
+            pointer-events: none; /* 让鼠标事件穿透文字 */
+            text-align: center;
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
             z-index: 10;
-            text-shadow: 0 0 15px rgba(255,255,255,0.5);
         }
     </style>
 </head>
 <body>
 
-    <div class="overlay">
-        <h1 class="text-3xl font-light tracking-widest text-cyan-100 mb-1" style="text-shadow: 0 0 20px cyan;">STARFALL</h1>
-        <p class="text-xs tracking-wider opacity-80">移动鼠标汇聚星光 · 点击切换星系</p>
+    <div id="instructions">
+        左右移动鼠标改变风向 • 鼠标周围有避雨力场
     </div>
-
-    <canvas id="canvas1"></canvas>
+    <canvas id="rainCanvas"></canvas>
 
     <script>
-        const canvas = document.getElementById('canvas1');
+        const canvas = document.getElementById('rainCanvas');
         const ctx = canvas.getContext('2d');
 
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-
-        // 配置参数
-        const config = {
-            rainCount: 3500,      // 大幅增加粒子数量，让雨更大
-            splashCount: 6,       // 增加溅射数量，配合大雨
-            mouseRadius: 120,     // 增大交互半径
-            gravity: 0.2,         
-        };
-
-        // 颜色主题 - 更明亮、高饱和度的颜色
-        const themes = [
-            { name: "Electric Blue", r: 60, g: 200, b: 255, glow: 'cyan' },
-            { name: "Neon Magenta", r: 255, g: 50, b: 200, glow: 'magenta' },
-            { name: "Cyber Green", r: 50, g: 255, b: 100, glow: 'lime' },
-            { name: "Solar Gold", r: 255, g: 220, b: 100, glow: 'gold' }
-        ];
-        let currentThemeIndex = 0;
-
-        // 鼠标状态
+        let width, height;
+        let drops = [];
+        let splashes = []; // 存储飞溅粒子
+        // 雨滴数量，可以根据性能调整。2000属于比较大的暴雨
+        const dropCount = 2000; 
+        
+        // 全局时间变量，用于颜色循环
+        let tick = 0;
+        
+        // 鼠标交互状态
         const mouse = {
-            x: -1000,
+            x: -1000, // 初始位置在屏幕外
             y: -1000,
-            isActive: false
+            active: false
         };
 
-        // 粒子容器
-        let rainDrops = [];
-        let splashes = [];
+        // 风力系数
+        let wind = 0;
 
-        // --- 类定义 ---
-
-        // 雨滴类
-        class RainDrop {
-            constructor() {
-                this.init(true);
-            }
-
-            init(randomY = false) {
-                this.x = Math.random() * canvas.width;
-                this.y = randomY ? Math.random() * canvas.height : -100;
-                
-                this.z = Math.random(); 
-                
-                // 速度稍快，增加动感
-                this.speed = 5 + this.z * 8;
-                this.length = 8 + this.z * 15;
-                // 透明度更高，看起来更亮
-                this.opacity = 0.4 + this.z * 0.6;
-                this.width = 1 + this.z * 1.5;
-                
-                this.velocityX = 0;
-            }
-
-            update() {
-                this.y += this.speed;
-                this.x += this.velocityX;
-                this.velocityX *= 0.9;
-
-                if (mouse.isActive) {
-                    const dx = this.x - mouse.x;
-                    const dy = this.y - mouse.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-
-                    if (distance < config.mouseRadius) {
-                        if (dy < 0 && distance < config.mouseRadius * 0.8) { 
-                            createSplash(this.x, this.y, this.z);
-                            this.init();
-                            return;
-                        } else {
-                            const angle = Math.atan2(dy, dx);
-                            const force = (config.mouseRadius - distance) / config.mouseRadius;
-                            this.velocityX += Math.cos(angle) * force * 5;
-                            // 鼠标下方也稍微加速下落
-                            if (dy > 0) this.speed += force * 2;
-                        }
-                    }
-                }
-
-                if (this.y > canvas.height) {
-                    if (Math.random() > 0.3) { 
-                         createSplash(this.x, canvas.height, this.z);
-                    }
-                    this.init();
-                }
-            }
-
-            draw() {
-                ctx.beginPath();
-                ctx.moveTo(this.x, this.y);
-                ctx.lineTo(this.x, this.y + this.length);
-                
-                const t = themes[currentThemeIndex];
-                ctx.strokeStyle = `rgba(${t.r},${t.g},${t.b}, ${this.opacity})`;
-                ctx.lineWidth = this.width;
-                ctx.lineCap = 'round';
-                
-                // 添加发光效果
-                ctx.shadowBlur = 10 * this.z + 5;
-                ctx.shadowColor = t.glow;
-                
-                ctx.stroke();
-                
-                // 重置 shadowBlur，避免影响其他绘制
-                ctx.shadowBlur = 0;
-            }
+        // 初始化画布尺寸
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
         }
 
-        // 溅射粒子类
-        class SplashParticle {
-            constructor(x, y, z) {
+        // 飞溅粒子类
+        class Splash {
+            constructor(x, y, hue) {
                 this.x = x;
                 this.y = y;
-                this.z = z;
-                this.speedX = (Math.random() - 0.5) * 8; // 溅射范围更大
-                this.speedY = -(Math.random() * 5 + 2);  // 溅射更高
-                this.life = 1.0;
-                this.decay = Math.random() * 0.02 + 0.015;
-                this.size = Math.random() * 2 + 1; // 粒子更大
+                // 随机向左右飞溅，速度随机
+                this.vx = (Math.random() - 0.5) * 4; 
+                // 向上弹起，速度随机
+                this.vy = -(Math.random() * 3 + 2); 
+                this.gravity = 0.2;
+                this.hue = hue; // 继承雨滴的颜色
+                this.life = 1.0; // 生命周期/透明度
+                this.decay = Math.random() * 0.05 + 0.02; // 消失速度
             }
 
             update() {
-                this.x += this.speedX;
-                this.y += this.speedY;
-                this.speedY += config.gravity * 1.5;
+                this.x += this.vx;
+                this.vy += this.gravity;
+                this.y += this.vy;
                 this.life -= this.decay;
             }
 
             draw() {
-                const t = themes[currentThemeIndex];
-                // 溅射粒子更亮
-                ctx.fillStyle = `rgba(${t.r},${t.g},${t.b}, ${this.life})`;
-                
+                // 使用 HSLA 颜色
+                ctx.fillStyle = `hsla(${this.hue}, 100%, 70%, ${this.life})`;
                 ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-                
-                // 添加发光效果
-                ctx.shadowBlur = 15 * this.life;
-                ctx.shadowColor = t.glow;
-                
+                ctx.arc(this.x, this.y, 1, 0, Math.PI * 2);
                 ctx.fill();
-                ctx.shadowBlur = 0;
             }
         }
 
-        // --- 功能函数 ---
+        // 雨滴类
+        class Drop {
+            constructor() {
+                this.reset(true);
+            }
 
-        function createSplash(x, y, z) {
-            if (z < 0.2) return;
-            for (let i = 0; i < config.splashCount; i++) {
-                splashes.push(new SplashParticle(x, y, z));
+            // 重置雨滴属性
+            reset(initial = false) {
+                this.x = Math.random() * width;
+                // 如果是初始化，随机分布在全屏；否则从顶部开始
+                this.y = initial ? Math.random() * height : -50;
+                
+                // z轴深度 (0 - 1)，1离屏幕最近，0最远
+                this.z = Math.random(); 
+                
+                // 调整参数让雨看起来更细腻
+                this.len = 15 + this.z * 15; 
+                this.opacity = 0.1 + this.z * 0.4; 
+                this.speed = 8 + this.z * 12; 
+                this.width = 0.5 + this.z * 0.8; 
+                
+                this.velX = (Math.random() - 0.5) * 0.5;
+
+                // 随机色彩偏移：每个雨滴都有自己的颜色性格
+                // 这样即使全局颜色在变，每个雨滴也不是完全一样的颜色
+                this.colorOffset = Math.random() * 60; 
+            }
+
+            update() {
+                // 1. 应用风力
+                const windTarget = (mouse.x - width / 2) * 0.02; 
+                wind += (windTarget - wind) * 0.001; 
+                
+                this.x += this.velX + wind * this.z;
+                this.y += this.speed;
+
+                // 2. 鼠标排斥力场
+                if (mouse.active) {
+                    const dx = this.x - mouse.x;
+                    const dy = this.y - mouse.y;
+                    const dist = Math.sqrt(dx * dx + dy * dy);
+                    const forceRadius = 100;
+
+                    if (dist < forceRadius) {
+                        const force = (forceRadius - dist) / forceRadius;
+                        const angle = Math.atan2(dy, dx);
+                        
+                        const pushX = Math.cos(angle) * force * 15;
+                        const pushY = Math.sin(angle) * force * 15;
+                        
+                        this.x += pushX;
+                        this.y += pushY;
+                    }
+                }
+
+                // 3. 边界检查
+                // 落地逻辑：生成飞溅
+                if (this.y > height) {
+                    // 只有靠近屏幕的雨滴(z较大)才产生明显飞溅
+                    if (this.z > 0.5 && Math.random() > 0.5) {
+                        const splashCount = Math.floor(Math.random() * 2) + 1;
+                        // 计算当前雨滴的颜色值
+                        const currentHue = (tick + this.colorOffset) % 360;
+                        for(let i=0; i < splashCount; i++) {
+                            splashes.push(new Splash(this.x, height, currentHue));
+                        }
+                    }
+                    this.reset();
+                } 
+                else if (this.x > width + 100 || this.x < -100) {
+                    this.reset();
+                    if (this.x > width) this.x = -50;
+                    else if (this.x < 0) this.x = width + 50;
+                    else this.y = -50;
+                }
+            }
+
+            draw() {
+                ctx.beginPath();
+                const tailX = this.x - (this.velX + wind * this.z) * 2;
+                const tailY = this.y - this.speed * 1.5;
+
+                ctx.moveTo(this.x, this.y);
+                ctx.lineTo(tailX, tailY);
+                
+                // 动态颜色计算：
+                // 基础颜色(tick) + 个人偏移(colorOffset) + 屏幕位置影响(this.x * 0.1)
+                // 这创造了一个流动的彩虹效果
+                const hue = (tick + this.colorOffset + this.x * 0.1) % 360;
+                
+                // 使用 HSLA: Hue(色相), Saturation(饱和度), Lightness(亮度), Alpha(透明度)
+                ctx.strokeStyle = `hsla(${hue}, 100%, 70%, ${this.opacity})`;
+                ctx.lineWidth = this.width;
+                ctx.lineCap = 'round';
+                ctx.stroke();
             }
         }
 
         function init() {
-            rainDrops = [];
-            splashes = [];
-            for (let i = 0; i < config.rainCount; i++) {
-                rainDrops.push(new RainDrop());
+            resize();
+            for (let i = 0; i < dropCount; i++) {
+                drops.push(new Drop());
             }
+            animate();
         }
 
         function animate() {
-            // 关键修改：使用半透明黑色填充，创造拖尾效果
-            ctx.fillStyle = 'rgba(2, 2, 5, 0.2)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // 鼠标交互光晕增强
-            if (mouse.isActive) {
-                const t = themes[currentThemeIndex];
-                const gradient = ctx.createRadialGradient(mouse.x, mouse.y, 0, mouse.x, mouse.y, config.mouseRadius * 1.2);
-                gradient.addColorStop(0, `rgba(${t.r},${t.g},${t.b}, 0.1)`);
-                gradient.addColorStop(0.5, `rgba(${t.r},${t.g},${t.b}, 0.2)`);
-                gradient.addColorStop(1, `rgba(${t.r},${t.g},${t.b}, 0.0)`);
-                
-                // 鼠标中心的光点
-                ctx.beginPath();
-                ctx.arc(mouse.x, mouse.y, 5, 0, Math.PI*2);
-                ctx.fillStyle = `rgba(${t.r},${t.g},${t.b}, 0.8)`;
-                ctx.shadowBlur = 20;
-                ctx.shadowColor = t.glow;
-                ctx.fill();
-                ctx.shadowBlur = 0;
+            // 时间流逝，让颜色动起来
+            tick += 0.5;
 
-                // 光晕圈
-                ctx.fillStyle = gradient;
-                ctx.beginPath();
-                ctx.arc(mouse.x, mouse.y, config.mouseRadius * 1.2, 0, Math.PI * 2);
-                ctx.fill();
-            }
+            // 拖影背景
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.4)';
+            ctx.fillRect(0, 0, width, height);
 
-            for (let i = 0; i < rainDrops.length; i++) {
-                rainDrops[i].update();
-                rainDrops[i].draw();
+            for (let drop of drops) {
+                drop.update();
+                drop.draw();
             }
 
             for (let i = splashes.length - 1; i >= 0; i--) {
-                splashes[i].update();
-                splashes[i].draw();
-                if (splashes[i].life <= 0) {
+                let s = splashes[i];
+                s.update();
+                s.draw();
+                if (s.life <= 0) {
                     splashes.splice(i, 1);
                 }
+            }
+            
+            if(splashes.length > 1000) {
+                splashes.splice(0, splashes.length - 1000);
+            }
+
+            // 绘制雨伞和暖心文字
+            if (mouse.active) {
+                ctx.save();
+                ctx.translate(mouse.x, mouse.y);
+                
+                // 1. 绘制伞盖
+                ctx.beginPath();
+                // 伞的半圆
+                ctx.arc(0, -10, 45, Math.PI, 0); 
+                // 伞的底部连接线 (贝塞尔曲线让它看起来有弧度)
+                ctx.bezierCurveTo(20, -25, -20, -25, -45, -10);
+                
+                // 伞的样式 - 暖色调光晕，给人安全感
+                ctx.shadowColor = "rgba(255, 220, 150, 0.6)";
+                ctx.shadowBlur = 25;
+                ctx.fillStyle = "rgba(30, 30, 40, 0.8)"; // 伞身深色半透明
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // 2. 绘制伞柄
+                ctx.beginPath();
+                ctx.shadowBlur = 0; // 伞柄不需要太多光晕
+                ctx.moveTo(0, -20); // 从伞盖内部开始
+                ctx.lineTo(0, 35);  // 竖线
+                ctx.arc(6, 35, 6, Math.PI, 0); // 弯钩
+                ctx.strokeStyle = "rgba(220, 220, 220, 0.8)";
+                ctx.lineWidth = 3;
+                ctx.stroke();
+
+                // 3. 绘制文字
+                ctx.shadowColor = "rgba(0, 0, 0, 0.8)"; // 文字阴影，保证清晰
+                ctx.shadowBlur = 4;
+                ctx.font = "bold 18px 'Microsoft YaHei', sans-serif";
+                ctx.fillStyle = "#ffffff";
+                ctx.textAlign = "center";
+                // 文字在伞上方显示，带一点暖色微光
+                ctx.fillText("别怕，雨再大有我呢", 0, -65);
+                
+                ctx.restore();
             }
 
             requestAnimationFrame(animate);
         }
 
-        // --- 事件监听 ---
+        window.addEventListener('resize', resize);
 
-        window.addEventListener('resize', () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-            init();
-        });
-
-        window.addEventListener('mousemove', e => {
+        window.addEventListener('mousemove', (e) => {
             mouse.x = e.clientX;
             mouse.y = e.clientY;
-            mouse.isActive = true;
+            mouse.active = true;
         });
 
-        window.addEventListener('touchmove', e => {
+        window.addEventListener('touchmove', (e) => {
+            e.preventDefault(); 
             mouse.x = e.touches[0].clientX;
             mouse.y = e.touches[0].clientY;
-            mouse.isActive = true;
-        }, {passive: true});
+            mouse.active = true;
+        }, { passive: false });
 
-        window.addEventListener('mouseout', () => {
-            mouse.isActive = false;
+        window.addEventListener('touchend', () => {
+            mouse.active = false; 
         });
-
-        window.addEventListener('click', () => {
-            currentThemeIndex = (currentThemeIndex + 1) % themes.length;
-        });
-
+        
         init();
-        animate();
 
     </script>
 </body>
